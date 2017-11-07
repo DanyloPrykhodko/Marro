@@ -1,12 +1,8 @@
 package com.weffle;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 
-@SuppressWarnings({"unused", "WeakerAccess"})
-public class Database implements Cloneable {
+public class Database implements Cloneable, AutoCloseable {
     private String address;
     private String username;
     private String password;
@@ -19,19 +15,15 @@ public class Database implements Cloneable {
         this.password = password;
     }
 
-    public void connect() throws SQLException {
+    public Database connect() throws SQLException {
         try {
-            Class.forName("com.mysql.cj.jdbc.Driver");
+            Class.forName("com.mysql.jdbc.Driver");
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
         connection = DriverManager.getConnection(address, username, password);
         statement = connection.createStatement();
-    }
-
-    public void close() throws SQLException {
-        connection.close();
-        statement.close();
+        return this;
     }
 
     public static String getAddress(String host, int port, String scheme, String... args) {
@@ -46,8 +38,30 @@ public class Database implements Cloneable {
         return builder.toString();
     }
 
-    public Statement getStatement() {
-        return statement;
+    public boolean execute(String sql) throws SQLException {
+        return statement.execute(sql);
+    }
+
+    public ResultSet executeQuery(String sql) throws SQLException {
+        return statement.executeQuery(sql);
+    }
+
+    public CallableStatement prepareCall(String sql) throws SQLException {
+        return connection.prepareCall(sql);
+    }
+
+    public PreparedStatement prepareStatement(String sql) throws SQLException {
+        return connection.prepareStatement(sql);
+    }
+
+    public Connection getConnection() {
+        return connection;
+    }
+
+    @Override
+    public void close() throws SQLException {
+        connection.close();
+        statement.close();
     }
 
     @Override

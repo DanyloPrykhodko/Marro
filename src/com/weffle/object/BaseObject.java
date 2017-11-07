@@ -4,92 +4,266 @@ import com.weffle.Database;
 import com.weffle.WebApplication;
 import org.json.JSONObject;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
+import java.util.HashMap;
 
-@SuppressWarnings({"unused", "WeakerAccess"})
-public abstract class BaseObject<E extends Enum> implements IBase {
+/**
+ * The BaseObject is abstract class to simplify working with database objects.
+ *
+ * @param <E> The enum of all required fields in database. The enum contains
+ *           names of fields.
+ * @author Danylo Prykhodko
+ */
+public abstract class BaseObject<E extends Enum<E>> implements Base {
+
+    /**
+     * The <E> class.
+     * To gain access to all fields.
+     */
+    private Class<E> e;
+
+    /**
+     * The object key.
+     */
+    private ObjectKey<E> key;
+
+    /**
+     * The object data.
+     */
+    private HashMap<E, Object> data;
+
+    /**
+     * The object children. The <E> is key for child object.
+     *
+     * @see BaseChild
+     */
+    private HashMap<E, BaseChild> children;
+
+    /**
+     * The key is auto increment.
+     */
     private boolean autoKey;
-    private Class<E> eClass;
-    private EnumTuple<E, Object> key;
-    private ObjectData<E> data;
 
-    private BaseObject(Class<E> eClass) {
-        this.eClass = eClass;
-        data = new ObjectData<>();
+    /**
+     * Private constructor. Only for implementation other constructors.
+     *
+     * @param e The <E> class of object's data.
+     */
+    public BaseObject(Class<E> e) {
+        this.e = e;
+        this.data = new HashMap<>();
+        this.children = new HashMap<>();
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * That constructor for implementation with unknown key. Also for auto
+     * increment key.
+     *
+     * @param e The <E> for key field.
+     */
     public BaseObject(E e) {
-        this((Class<E>) e.getClass());
+        this(e.getDeclaringClass());
         setKey(e, null);
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * That constructor for implementation with key.
+     *
+     * @param e The <E> indication for key filed.
+     * @param key The key of element.
+     */
     public BaseObject(E e, Object key) {
-        this((Class<E>) e.getClass());
+        this(e.getDeclaringClass());
         setKey(e, key);
     }
 
-    public JSONObject get() throws SQLException {
-        return load().getJsonData();
+    /**
+     * Get object. Load data and children from the database.
+     *
+     * @return The loaded instance.
+     */
+    @Override
+    public BaseObject<E> get() {
+        checkMissing();
+        try (Database database = WebApplication.getDatabase()) {
+            database.connect();
+
+            String sql = String.format("SELECT * FROM %s WHERE %s = ?",
+                    getName(), key.getEnum().name());
+            PreparedStatement statement = database.prepareStatement(sql);
+            statement.setObject(1, key.getValue());
+            ResultSet resultSet = statement.executeQuery();
+
+            resultSet.next();
+            for (E e : e.getEnumConstants()) {
+                Object value = resultSet.getObject(e.name());
+                if (value == null)
+                    continue;
+                data.put(e, value);
+                if (children.containsKey(e))
+                    children.get(e).get(value);
+            }
+            return this;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
-    public Object post() throws SQLException {
+    /**
+     * Post object. Add new object with current data to the database.
+     *
+     * @return The key of object in database.
+     */
+    @Override
+    public Object post() {
         if (!autoKey && contains())
-            throw new IllegalArgumentException(String.format("Database already contains an object where %s = %s", key.getEnum().name(), key.getValue()));
-        Database database = WebApplication.getDatabase();
-        database.connect();
-        StringBuilder names = new StringBuilder();
-        StringBuilder values = new StringBuilder();
-        if (!autoKey) {
-            names.append(key.getEnum().name()).append(", ");
-            values.append(valueToString(key.getValue())).append(", ");
+            throw new IllegalArgumentException(String.format("Database " +
+                    "already contains an object where %s = %s",
+                    key.getEnum().name(), key.getValue()));
+        try (Database database = WebApplication.getDatabase()) {
+            database.connect();
+            StringBuilder names = new StringBuilder();
+            StringBuilder values = new StringBuilder();
+            if (!autoKey) {
+                names.append(key.getEnum().name()).append(", ");
+                values.append("?, ");
+            }
+            for (int i = 0; i < e.getEnumConstants().length; i++) {
+                E e = this.e.getEnumConstants()[i];
+                Object o = data.get(e);
+                if (o == null || e.equals(key.getEnum()))
+                    continue;
+                names.append(e.name());
+                values.append("?");
+                if (i + 1 < this.e.getEnumConstants().length) {
+                    names.append(", ");
+                    values.append(", ");
+                }
+            }
+
+            String sql = String.format("INSERT INTO %s (%s) VALUES (%s)",
+                    getName(), names, values);
+            PreparedStatement statement = database.prepareStatement(sql);
+            if (!autoKey)
+                statement.setObject(1, key.getValue());
+            for (int i = 0; i < e.getEnumConstants().length; i++) {
+                E e = this.e.getEnumConstants()[i];
+                if (e.equals(key.getEnum()))
+                    continue;
+                statement.setObject(autoKey ? i + 1 : i + 2, data.get(e));
+            }
+            statement.execute();
+
+            if (autoKey)
+                return getLastKey();
+            return key.getValue();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
         }
-        for (E e : eClass.getEnumConstants()) {
-            Object o = data.get(e);
-            if (e.equals(key.getEnum()))
-                continue;
-            if (o == null)
-                continue;
-            names.append(e.name()).append(", ");
-            values.append(valueToString(o)).append(", ");
-        }
-        if (names.toString().endsWith(", "))
-            names.delete(names.length() - 2, names.length());
-        if (values.toString().endsWith(", "))
-            values.delete(values.length() - 2, values.length());
-        database.getStatement().execute(String.format("INSERT INTO %s (%s) VALUES (%s)", getClassName(), names, values));
-        database.close();
-        if (autoKey)
-            return lastKey();
-        return key.getValue();
     }
 
-    public void put(JSONObject json) throws SQLException {
-        checkAvoidError();
-        Database database = WebApplication.getDatabase();
-        database.connect();
-        for (E e : eClass.getEnumConstants()) {
-            String name = e.name();
-            if (!json.has(name))
-                continue;
-            database.getStatement().execute(String.format("UPDATE %s SET %s = %s WHERE %s = %s", getClassName(), name, valueToString(json.get(name)), key.getEnum().name(), key.getValue().toString()));
+    /**
+     * Put object. Edit object data in the database.
+     */
+    @Override
+    public void put(JSONObject json) {
+        checkMissing();
+        try (Database database = WebApplication.getDatabase()) {
+            database.connect();
+            Connection connection = database.getConnection();
+            connection.setAutoCommit(false);
+            for (E e : e.getEnumConstants()) {
+                String name = e.name();
+                if (!json.has(name))
+                    continue;
+                if (e.equals(key.getEnum()) && autoKey)
+                    continue;
+
+                String sql = String.format("UPDATE %s SET %s = ? WHERE %s = ?",
+                        getName(), name, key.getEnum().name());
+                PreparedStatement statement = database.prepareStatement(sql);
+                statement.setObject(1, json.get(name));
+                statement.setObject(2, key.getValue());
+                System.out.println(statement.toString());
+                statement.execute();
+            }
+            connection.commit();
+            connection.setAutoCommit(true);
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
-        database.close();
     }
 
-    public void delete() throws SQLException {
-        checkAvoidError();
-        Database database = WebApplication.getDatabase();
-        database.connect();
-        database.getStatement().execute(String.format("DELETE FROM %s WHERE %s = %s", getClassName(), key.getEnum().name(), valueToString(key.getValue())));
-        database.close();
+    /**
+     * Delete object. Delete object from the database.
+     */
+    @Override
+    public void delete() {
+        checkMissing();
+        try (Database database = WebApplication.getDatabase()) {
+            database.connect();
+            String sql = String.format("DELETE FROM %s WHERE %s = ?",
+                    getName(), key.getEnum().name());
+            PreparedStatement statement = database.prepareStatement(sql);
+            statement.setObject(1, key.getValue());
+            statement.execute();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
+    /**
+     * Get object's key.
+     *
+     * @return The object's key.
+     */
+    @Override
+    public ObjectKey<E> getKey() {
+        return key;
+    }
+
+    /**
+     * Get object's data.
+     *
+     * @return The object's data.
+     */
+    @Override
+    public HashMap<E, Object> getData() {
+        return data;
+    }
+
+    /**
+     * Get object's data as JSON.
+     *
+     * @return JSON of data.
+     */
+    @Override
+    public JSONObject getJSON() {
+        JSONObject json = new JSONObject();
+        for (HashMap.Entry<E, Object> entry : data.entrySet())
+            json.put(entry.getKey().name(), entry.getValue());
+        for (HashMap.Entry<E, BaseChild> child : children.entrySet()) {
+            Base object = child.getValue().getChildren();
+            if (object != null)
+                json.put(child.getKey().name(), object.getJSON());
+        }
+        return json;
+    }
+
+    /**
+     * Parse object's data from the JSON.
+     *
+     * @param json JSON of object's data.
+     * @return The parsed instance.
+     */
+    @Override
     public BaseObject<E> parse(JSONObject json) {
-        for (E e : eClass.getEnumConstants()) {
+        for (E e : e.getEnumConstants()) {
             String name = e.name();
             if (!json.has(name))
                 continue;
@@ -98,104 +272,125 @@ public abstract class BaseObject<E extends Enum> implements IBase {
                 if (!autoKey)
                     key.setValue(value);
             } else
-                dataPut(e, value);
+                data.put(e, value);
         }
         return this;
     }
 
-    public BaseObject<E> load() throws SQLException {
-        checkAvoidError();
-        Database database = WebApplication.getDatabase();
-        database.connect();
-        ResultSet resultSet = database.getStatement().executeQuery(String.format("SELECT * FROM %s WHERE %s = %s", getClassName(), key.getEnum().name(), valueToString(key.getValue())));
-        resultSet.next();
-        for (E e : eClass.getEnumConstants())
-            dataPut(e, resultSet.getObject(e.name()));
-        database.close();
+    /**
+     * Parse object's data from the ResultSet.
+     *
+     * @param resultSet ResultSet with object's data.
+     * @return The parsed instance.
+     */
+    public BaseObject<E> parse(ResultSet resultSet) {
+        for (E en : e.getEnumConstants()) {
+            String name = en.name();
+            try {
+                Object value = resultSet.getObject(name);
+                if (en.equals(key.getEnum())) {
+                    if (!autoKey)
+                        key.setValue(value);
+                } else
+                    data.put(en, value);
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
         return this;
     }
 
-    public boolean contains() throws SQLException {
-        Database database = WebApplication.getDatabase();
-        database.connect();
-        String keyName = key.getEnum().name();
-        ResultSet resultSet = database.getStatement().executeQuery(String.format("SELECT %s FROM %s WHERE %s = %s", keyName, getClassName(), keyName, valueToString(key.getValue())));
-        boolean contains = resultSet.next();
-        database.close();
-        return contains;
+    /**
+     * Check contains of object's key in the database.
+     *
+     * @return The object's key already in use.
+     */
+    private boolean contains() {
+        try (Database database = WebApplication.getDatabase()) {
+            database.connect();
+            String keyName = key.getEnum().name();
+
+            String sql = String.format("SELECT %s FROM %s WHERE %s = ?",
+                    keyName, getName(), keyName);
+            PreparedStatement statement = database.prepareStatement(sql);
+            statement.setObject(1, key.getValue());
+
+            return statement.executeQuery().next();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
-    private void checkAvoidError() throws SQLException {
-        if (!contains())
-            throw new IllegalArgumentException(String.format("Database don't contains an object where %s = %s", key.getEnum().name(), key.getValue()));
+    /**
+     * The method gives an error message if object's key is does't contains
+     * in the database.
+     */
+    private void checkMissing() {
+        if (!contains()) {
+            String message = String.format("Database don't contains an" +
+                    " object where %s = %s", key.getEnum().name(),
+                    key.getValue());
+            throw new IllegalArgumentException(message);
+        }
     }
 
-    private String getClassName() {
-        return getClass().getSimpleName().toLowerCase();
+    /**
+     * Get simple class name for other requests.
+     *
+     * @return Object's name.
+     */
+    private String getName() {
+        String simpleName = getClass().getSimpleName();
+        return String.valueOf(simpleName.charAt(0)).toLowerCase() +
+                simpleName.substring(1);
     }
 
-    /** Key manage. */
+    /**
+     * Put child object.
+     *
+     * @param e The <E> child's key.
+     * @param c The class of child.
+     * @param <B> The object extends by BaseObject class.
+     */
+    protected <B extends BaseObject> void putChild(E e, Class<B> c) {
+        children.put(e, new BaseChild<>(c));
+    }
 
-    public void setAutoKey() {
+    /**
+     * Get last key in database.
+     *
+     * @return The last key of objects in database.
+     */
+    private Object getLastKey() {
+        try (Database database = WebApplication.getDatabase()) {
+            database.connect();
+            String sql = String.format("SELECT %s FROM %s ORDER BY %s DESC LIMIT 1",
+                    key.getEnum().name(), getName(), key.getEnum().name());
+            ResultSet resultSet = database.executeQuery(sql);
+            if (!resultSet.next())
+                throw new NullPointerException();
+            return resultSet.getObject(key.getEnum().name());
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Set object's key as auto increment.
+     */
+    protected void setAutoKey() {
         this.autoKey = true;
     }
 
-    public EnumTuple<E, Object> getKey() {
-        return key;
-    }
-
-    public void setKey(E e, Object key) {
-        this.key = new EnumTuple<>(e, key);
-    }
-
-    public Object lastKey() throws SQLException {
-        Database database = WebApplication.getDatabase();
-        database.connect();
-        ResultSet resultSet = database.getStatement().executeQuery(String.format("SELECT %s FROM %s ORDER BY %s DESC LIMIT 1", key.getEnum().name(), getClassName(), key.getEnum().name()));
-        if (!resultSet.next())
-            throw new NullPointerException();
-        Object last = resultSet.getObject(key.getEnum().name());
-        database.close();
-        return last;
-    }
-
-    public Object[] allKeys() throws SQLException {
-        Database database = WebApplication.getDatabase();
-        database.connect();
-        String keyName = key.getEnum().name();
-        ResultSet resultSet = database.getStatement().executeQuery(String.format("SELECT %s FROM %s", keyName, getClassName()));
-        ArrayList<Object> keys = new ArrayList<>();
-        while (resultSet.next())
-            keys.add(resultSet.getObject(keyName));
-        database.close();
-        return keys.toArray();
-    }
-
-    /** ObjectData manage. */
-
-    public ObjectData<E> getData() {
-        return data;
-    }
-
-    public void dataPut(E e, Object o) {
-        data.put(e, o);
-    }
-
-    public Object dataRemove(E e) {
-        return data.remove(e);
-    }
-
-    private JSONObject getJsonData() {
-        JSONObject json = new JSONObject();
-        for (ObjectData.Entry<E, Object> entry : data.entrySet()) {
-            if (entry.getValue() == null)
-                continue;
-            json.put(entry.getKey().name(), entry.getValue());
-        }
-        return json;
-    }
-
-    private String valueToString(Object o) {
-        return (o instanceof String) ? "\'" + o + "\'" : o.toString();
+    /**
+     * Set object's key.
+     *
+     * @param e The <E> field of object's key.
+     * @param key The object's key value.
+     */
+    private void setKey(E e, Object key) {
+        this.key = new ObjectKey<>(e, key);
     }
 }
