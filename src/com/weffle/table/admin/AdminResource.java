@@ -26,7 +26,7 @@ public class AdminResource {
     @Path("{table}/{key}")
     @Produces(MediaType.APPLICATION_JSON)
     public String get(@PathParam("table") String table,
-                      @PathParam("key") int key,
+                      @PathParam("key") String key,
                       @QueryParam("token") String token) {
         Admin.checkAccess(token, AdminRank.Global);
         Base base = Base.createBase(table);
@@ -47,6 +47,22 @@ public class AdminResource {
         Base base = Base.createBase(table);
         if (base == null)
             return null;
+        return (String) base.parse(new JSONObject(json)).post();
+    }
+
+    @POST
+    @Path("{table}/{key}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.TEXT_PLAIN)
+    public String post(@PathParam("table") String table,
+                       @PathParam("key") String key,
+                       @QueryParam("token") String token,
+                       String json) {
+        Admin.checkAccess(token, AdminRank.Global);
+        Base base = Base.createBase(table);
+        if (base == null)
+            return null;
+        base.getKey().setValue(key);
         return (String) base.parse(new JSONObject(json)).post();
     }
 

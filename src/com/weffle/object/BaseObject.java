@@ -129,20 +129,19 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
             StringBuilder names = new StringBuilder();
             StringBuilder values = new StringBuilder();
             if (!autoKey) {
-                names.append(key.getEnum().name()).append(", ");
-                values.append("?, ");
-            }
-            for (int i = 0; i < e.getEnumConstants().length; i++) {
-                E e = this.e.getEnumConstants()[i];
-                Object o = data.get(e);
-                if (o == null || e.equals(key.getEnum()))
-                    continue;
-                names.append(e.name());
+                names.append(key.getEnum().name());
                 values.append("?");
-                if (i + 1 < this.e.getEnumConstants().length) {
+            }
+            for (HashMap.Entry<E, Object> entry : data.entrySet()) {
+                Object o = entry.getValue();
+                if (o == null)
+                    continue;
+                if (names.length() > 0 && values.length() > 0) {
                     names.append(", ");
                     values.append(", ");
                 }
+                names.append(entry.getKey().name());
+                values.append("?");
             }
 
             String sql = String.format("INSERT INTO %s (%s) VALUES (%s)",
@@ -150,11 +149,10 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
             PreparedStatement statement = database.prepareStatement(sql);
             if (!autoKey)
                 statement.setObject(1, key.getValue());
-            for (int i = 0; i < e.getEnumConstants().length; i++) {
-                E e = this.e.getEnumConstants()[i];
-                if (e.equals(key.getEnum()))
-                    continue;
-                statement.setObject(autoKey ? i + 1 : i + 2, data.get(e));
+            int i = 1;
+            for (HashMap.Entry<E, Object> entry : data.entrySet()) {
+                statement.setObject(autoKey ? i : i + 1, entry.getValue());
+                i++;
             }
             statement.execute();
 
@@ -189,7 +187,6 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
                 PreparedStatement statement = database.prepareStatement(sql);
                 statement.setObject(1, json.get(name));
                 statement.setObject(2, key.getValue());
-                System.out.println(statement.toString());
                 statement.execute();
             }
             connection.commit();
