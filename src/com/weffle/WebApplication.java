@@ -12,19 +12,17 @@ public class WebApplication extends Application {
 
     public WebApplication() {
         super();
-        Properties properties = new Properties();
         try {
-            properties.load(getClass().getResourceAsStream("/properties/config.properties"));
-            String host = properties.getProperty("database.host");
-            int port = Integer.parseInt(properties.getProperty("database.port"));
-            String scheme = properties.getProperty("database.scheme");
-            String user = properties.getProperty("database.user");
-            String password = properties.getProperty("database.password");
-            String address = Database.getAddress(host, port, scheme, "autoReconnect=true", "useSSL=false", "characterEncoding=utf8", "serverTimezone=UTC");
-            database = new Database(address, user, password);
+            Properties properties = new Properties();
+            properties.load(getClass().getResourceAsStream("/properties/database.properties"));
+            database = Database.createFromProperties(properties);
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public static void setDatabase(Database database) {
+        WebApplication.database = database;
     }
 
     public static Database getDatabase() throws SQLException {

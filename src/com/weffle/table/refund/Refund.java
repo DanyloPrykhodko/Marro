@@ -7,12 +7,14 @@ import com.weffle.table.sale.Sale;
 public class Refund extends BaseObject<RefundData> {
     public Refund() {
         super(RefundData.id);
+        setAutoKey();
         putChild(RefundData.sale, Sale.class);
         putChild(RefundData.payment, Payment.class);
     }
 
     public Refund(int id) {
         super(RefundData.id, id);
+        setAutoKey();
         putChild(RefundData.sale, Sale.class);
         putChild(RefundData.payment, Payment.class);
     }

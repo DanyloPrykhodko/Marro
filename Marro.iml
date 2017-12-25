@@ -23,6 +23,7 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/res" type="java-resource" />
+      <sourceFolder url="file://$MODULE_DIR$/src/test" isTestSource="true" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
@@ -32,6 +33,9 @@
     <orderEntry type="library" name="cors-filter-2.6" level="project" />
     <orderEntry type="library" name="java-property-utils-1.10" level="project" />
     <orderEntry type="library" name="mysql-connector-java-6.0.6 (2)" level="application" />
-    <orderEntry type="library" name="mysql-connector-java-5.1.44-bin" level="project" />
+    <orderEntry type="library" name="mysql-connector-java-6.0.6" level="project" />
+    <orderEntry type="library" name="junit-4.12" level="project" />
+    <orderEntry type="library" name="ApiClient" level="project" />
+    <orderEntry type="library" name="hamcrest-all-1.3" level="project" />
   </component>
 </module>

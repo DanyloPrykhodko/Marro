@@ -1,6 +1,7 @@
 package com.weffle;
 
 import java.sql.*;
+import java.util.Properties;
 
 public class Database implements Cloneable, AutoCloseable {
     private String address;
@@ -17,7 +18,7 @@ public class Database implements Cloneable, AutoCloseable {
 
     public Database connect() throws SQLException {
         try {
-            Class.forName("com.mysql.jdbc.Driver");
+            Class.forName("com.mysql.cj.jdbc.Driver");
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
@@ -56,6 +57,18 @@ public class Database implements Cloneable, AutoCloseable {
 
     public Connection getConnection() {
         return connection;
+    }
+
+    public static Database createFromProperties(Properties properties) {
+        String host = properties.getProperty("host");
+        int port = Integer.parseInt(properties.getProperty("port"));
+        String scheme = properties.getProperty("scheme");
+        String user = properties.getProperty("user");
+        String password = properties.getProperty("password");
+        String address = Database.getAddress(host, port, scheme,
+                "autoReconnect=true", "useSSL=false",
+                "characterEncoding=utf8", "serverTimezone=UTC");
+        return new Database(address, user, password);
     }
 
     @Override

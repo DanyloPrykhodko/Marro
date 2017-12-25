@@ -8,7 +8,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 
 /**
  * The BaseObject is abstract class to simplify working with database objects.
@@ -17,14 +19,12 @@ import java.util.HashMap;
  *           names of fields.
  * @author Danylo Prykhodko
  */
-public abstract class BaseObject<E extends Enum<E>> implements Base {
-
+public abstract class BaseObject<E extends Enum<E>> implements Base<E> {
     /**
      * The <E> class.
      * To gain access to all fields.
      */
     private Class<E> e;
-
     /**
      * The object key.
      */
@@ -33,14 +33,12 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
     /**
      * The object data.
      */
-    private HashMap<E, Object> data;
+    private Map<E, Object> data;
 
     /**
      * The object children. The <E> is key for child object.
-     *
-     * @see BaseChild
      */
-    private HashMap<E, BaseChild> children;
+    private  Map<E, Class<? extends BaseObject>> children;
 
     /**
      * The key is auto increment.
@@ -81,13 +79,42 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
     }
 
     /**
+     * Get all object. Load data and children of all objects from the database.
+     *
+     * @return The array of loaded instances.
+     */
+    @Override
+    public BaseObject[] getAll() {
+        try (Database database = WebApplication.getDatabase()) {
+            database.connect();
+            ArrayList<BaseObject> list = new ArrayList<>();
+
+            String sql = String.format("SELECT * FROM %s", getName());
+            PreparedStatement statement = database.prepareStatement(sql);
+            ResultSet resultSet = statement.executeQuery();
+
+            while (resultSet.next()) try {
+                Base b = this.getClass().newInstance();
+                list.add((BaseObject) b.parse(resultSet));
+            } catch (InstantiationException | IllegalAccessException e1) {
+                e1.printStackTrace();
+                return null;
+            }
+            return list.toArray(new BaseObject[0]);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
      * Get object. Load data and children from the database.
      *
      * @return The loaded instance.
      */
     @Override
     public BaseObject<E> get() {
-        checkMissing();
+        check();
         try (Database database = WebApplication.getDatabase()) {
             database.connect();
 
@@ -98,14 +125,7 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
             ResultSet resultSet = statement.executeQuery();
 
             resultSet.next();
-            for (E e : e.getEnumConstants()) {
-                Object value = resultSet.getObject(e.name());
-                if (value == null)
-                    continue;
-                data.put(e, value);
-                if (children.containsKey(e))
-                    children.get(e).get(value);
-            }
+            parse(resultSet);
             return this;
         } catch (SQLException e) {
             e.printStackTrace();
@@ -133,10 +153,12 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
                 values.append("?");
             }
             for (HashMap.Entry<E, Object> entry : data.entrySet()) {
-                Object o = entry.getValue();
-                if (o == null)
+                Object value = entry.getValue();
+                if (value == null)
                     continue;
-                if (names.length() > 0 && values.length() > 0) {
+                if (entry.getKey().equals(key.getEnum()))
+                    continue;
+                if (!names.toString().isEmpty()) {
                     names.append(", ");
                     values.append(", ");
                 }
@@ -149,9 +171,18 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
             PreparedStatement statement = database.prepareStatement(sql);
             if (!autoKey)
                 statement.setObject(1, key.getValue());
-            int i = 1;
+            int i = autoKey ? 1 : 2;
             for (HashMap.Entry<E, Object> entry : data.entrySet()) {
-                statement.setObject(autoKey ? i : i + 1, entry.getValue());
+                Object value = entry.getValue();
+                if (value == null)
+                    continue;
+                if (entry.getKey().equals(key.getEnum()))
+                    continue;
+                if (children.containsKey(entry.getKey()) &&
+                        value instanceof Base)
+                    statement.setObject(i, ((Base) value).getKey().getValue());
+                else
+                    statement.setObject(i, value);
                 i++;
             }
             statement.execute();
@@ -167,32 +198,45 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
 
     /**
      * Put object. Edit object data in the database.
+     *
+     * @return The JSON of edited data.
      */
     @Override
-    public void put(JSONObject json) {
-        checkMissing();
+    public JSONObject put(JSONObject json) {
+        check();
         try (Database database = WebApplication.getDatabase()) {
             database.connect();
             Connection connection = database.getConnection();
             connection.setAutoCommit(false);
+            JSONObject edited = new JSONObject();
             for (E e : e.getEnumConstants()) {
                 String name = e.name();
                 if (!json.has(name))
                     continue;
                 if (e.equals(key.getEnum()) && autoKey)
                     continue;
-
+                if (children.containsKey(e))
+                    edited.put(name, ((Base) json.get(name))
+                            .getKey().getValue());
+                else
+                    edited.put(name, json.get(name));
                 String sql = String.format("UPDATE %s SET %s = ? WHERE %s = ?",
                         getName(), name, key.getEnum().name());
                 PreparedStatement statement = database.prepareStatement(sql);
-                statement.setObject(1, json.get(name));
+                if (children.containsKey(e))
+                    statement.setObject(1, ((Base) json.get(name))
+                            .getKey().getValue());
+                else
+                    statement.setObject(1, json.get(name));
                 statement.setObject(2, key.getValue());
                 statement.execute();
             }
             connection.commit();
             connection.setAutoCommit(true);
+            return edited;
         } catch (SQLException e) {
             e.printStackTrace();
+            return new JSONObject();
         }
     }
 
@@ -201,7 +245,7 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
      */
     @Override
     public void delete() {
-        checkMissing();
+        check();
         try (Database database = WebApplication.getDatabase()) {
             database.connect();
             String sql = String.format("DELETE FROM %s WHERE %s = ?",
@@ -230,8 +274,13 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
      * @return The object's data.
      */
     @Override
-    public HashMap<E, Object> getData() {
+    public Map<E, Object> getData() {
         return data;
+    }
+
+    @Override
+    public void putData(E key, Object value) {
+        data.put(key, value);
     }
 
     /**
@@ -242,12 +291,14 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
     @Override
     public JSONObject getJSON() {
         JSONObject json = new JSONObject();
-        for (HashMap.Entry<E, Object> entry : data.entrySet())
-            json.put(entry.getKey().name(), entry.getValue());
-        for (HashMap.Entry<E, BaseChild> child : children.entrySet()) {
-            Base object = child.getValue().getChildren();
-            if (object != null)
-                json.put(child.getKey().name(), object.getJSON());
+        for (HashMap.Entry<E, Object> entry : data.entrySet()) {
+            if (entry.getValue() == null)
+                continue;
+            if (children.containsKey(entry.getKey()))
+                json.put(entry.getKey().name(),
+                        ((Base) entry.getValue()).getJSON());
+            else
+                json.put(entry.getKey().name(), entry.getValue());
         }
         return json;
     }
@@ -265,10 +316,25 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
             if (!json.has(name))
                 continue;
             Object value = json.get(name);
-            if (e.equals(key.getEnum())) {
-                if (!autoKey)
-                    key.setValue(value);
-            } else
+            if (value == null)
+                continue;
+            if (e.equals(key.getEnum()))
+                key.setValue(value);
+            if (children.containsKey(e))
+                try {
+                    Base base = children.get(e).newInstance();
+                    if (value instanceof JSONObject)
+                        base.parse((JSONObject) value);
+                    else {
+                        base.getKey().setValue(value);
+                        base.get();
+                    }
+                    data.put(e, base);
+                } catch (InstantiationException |
+                        IllegalAccessException e1) {
+                    e1.printStackTrace();
+                }
+            else
                 data.put(e, value);
         }
         return this;
@@ -280,16 +346,27 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
      * @param resultSet ResultSet with object's data.
      * @return The parsed instance.
      */
+    @Override
     public BaseObject<E> parse(ResultSet resultSet) {
-        for (E en : e.getEnumConstants()) {
-            String name = en.name();
+        for (E eConst : e.getEnumConstants()) {
+            String name = eConst.name();
             try {
                 Object value = resultSet.getObject(name);
-                if (en.equals(key.getEnum())) {
-                    if (!autoKey)
-                        key.setValue(value);
+                if (value == null)
+                    continue;
+                if (eConst.equals(key.getEnum()))
+                    key.setValue(value);
+                if (children.containsKey(eConst)) {
+                    try {
+                        Base base = children.get(eConst).newInstance();
+                        base.getKey().setValue(value);
+                        data.put(eConst, base.get());
+                    } catch (InstantiationException |
+                            IllegalAccessException e1) {
+                        e1.printStackTrace();
+                    }
                 } else
-                    data.put(en, value);
+                    data.put(eConst, value);
             } catch (SQLException e) {
                 e.printStackTrace();
             }
@@ -323,7 +400,8 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
      * The method gives an error message if object's key is does't contains
      * in the database.
      */
-    private void checkMissing() {
+    @Override
+    public void check() {
         if (!contains()) {
             String message = String.format("Database don't contains an" +
                     " object where %s = %s", key.getEnum().name(),
@@ -351,7 +429,7 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
      * @param <B> The object extends by BaseObject class.
      */
     protected <B extends BaseObject> void putChild(E e, Class<B> c) {
-        children.put(e, new BaseChild<>(c));
+        children.put(e, c);
     }
 
     /**
@@ -362,8 +440,9 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
     private Object getLastKey() {
         try (Database database = WebApplication.getDatabase()) {
             database.connect();
-            String sql = String.format("SELECT %s FROM %s ORDER BY %s DESC LIMIT 1",
-                    key.getEnum().name(), getName(), key.getEnum().name());
+            String sql = String.format("SELECT %s FROM %s ORDER BY %s " +
+                            "DESC LIMIT 1", key.getEnum().name(), getName(),
+                    key.getEnum().name());
             ResultSet resultSet = database.executeQuery(sql);
             if (!resultSet.next())
                 throw new NullPointerException();
@@ -389,5 +468,10 @@ public abstract class BaseObject<E extends Enum<E>> implements Base {
      */
     private void setKey(E e, Object key) {
         this.key = new ObjectKey<>(e, key);
+    }
+
+    @Override
+    public String toString() {
+        return getJSON().toString();
     }
 }

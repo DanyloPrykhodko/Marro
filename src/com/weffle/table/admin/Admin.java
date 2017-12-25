@@ -22,7 +22,7 @@ public class Admin extends BaseObject<AdminData> {
         putChild(AdminData.employee, Employee.class);
     }
 
-    static String getToken(String hash) {
+    static JSONObject getToken(String hash) {
         try (Database database = WebApplication.getDatabase()) {
             database.connect();
             String sql = "SELECT id, password FROM admin";
@@ -40,8 +40,12 @@ public class Admin extends BaseObject<AdminData> {
                         return admin.updateToken();
                     try {
                         admin.checkTokenDate();
-                        return (String) admin.getJSON().get(
-                                AdminData.token.name());
+                        JSONObject json = new JSONObject();
+                        json.put(AdminData.token.name(),
+                                admin.getData().get(AdminData.token));
+                        json.put(AdminData.tokenDate.name(),
+                                admin.getData().get(AdminData.tokenDate));
+                        return json;
                     } catch (RuntimeException e) {
                         e.printStackTrace();
                         return admin.updateToken();
@@ -51,20 +55,19 @@ public class Admin extends BaseObject<AdminData> {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        return null;
+        throw new RuntimeException("Unknown hash!");
     }
 
-    private String updateToken() {
+    private JSONObject updateToken() {
         JSONObject json = new JSONObject();
         json.put(AdminData.tokenDate.name(),
                 new Timestamp(System.currentTimeMillis() + 1_800_000L));
         String token = SecurityAgent.createToken(16);
         json.put(AdminData.token.name(), token);
-        put(json);
-        return token;
+        return put(json);
     }
 
-    private static Admin createFromToken(String token)
+    public static Admin createFromToken(String token)
             throws RuntimeException {
         try (Database database = WebApplication.getDatabase()) {
             database.connect();
@@ -77,20 +80,15 @@ public class Admin extends BaseObject<AdminData> {
                 throw new RuntimeException("The token is not valid!");
             Admin admin = (Admin) new Admin(resultSet.getInt(
                     AdminData.id.name())).get();
-            try {
-                admin.checkTokenDate();
-                return admin;
-            } catch (IllegalArgumentException e) {
-                e.printStackTrace();
-            }
+            admin.checkTokenDate();
+            return admin;
         } catch (SQLException e) {
             e.printStackTrace();
+            return null;
         }
-        return null;
     }
 
-    static void checkAccess(String token, AdminRank rank)
-            throws RuntimeException {
+    static void checkAccess(String token, AdminRank rank) {
         Admin admin = Admin.createFromToken(token);
         if (admin == null)
             return;
@@ -103,14 +101,14 @@ public class Admin extends BaseObject<AdminData> {
     static String checkToken(String token) {
         try {
             Admin.createFromToken(token);
-            return "Token is valid!";
+            return "The token is valid!";
         } catch (RuntimeException e) {
             e.printStackTrace();
             return e.getMessage();
         }
     }
     
-    private void checkTokenDate() throws RuntimeException {
+    private void checkTokenDate() {
         Timestamp timestamp = (Timestamp) getData().get(AdminData.tokenDate);
         long current = System.currentTimeMillis();
         if (timestamp.before(new Date(current)))

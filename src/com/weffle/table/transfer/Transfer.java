@@ -7,15 +7,17 @@ import com.weffle.table.unit.Unit;
 public class Transfer extends BaseObject<TransferData> {
     public Transfer() {
         super(TransferData.id);
+        setAutoKey();
         putChild(TransferData.unit, Unit.class);
-        putChild(TransferData.from, Point.class);
-        putChild(TransferData.to, Point.class);
+        putChild(TransferData.departure, Point.class);
+        putChild(TransferData.arrival, Point.class);
     }
 
     public Transfer(int id) {
         super(TransferData.id, id);
+        setAutoKey();
         putChild(TransferData.unit, Unit.class);
-        putChild(TransferData.from, Point.class);
-        putChild(TransferData.to, Point.class);
+        putChild(TransferData.departure, Point.class);
+        putChild(TransferData.arrival, Point.class);
     }
 }

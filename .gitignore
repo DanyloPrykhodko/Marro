@@ -29,4 +29,5 @@ hs_err_pid*
 /out/
 
 # Configuration file
-config.properties
+database.properties
+test.properties
