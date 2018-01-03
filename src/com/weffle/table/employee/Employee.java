@@ -5,14 +5,13 @@ import com.weffle.object.BaseObject;
 import com.weffle.table.admin.Admin;
 import com.weffle.table.admin.AdminData;
 import com.weffle.table.admin.AdminRank;
+import com.weffle.table.journal.Journal;
+import com.weffle.table.journal.JournalData;
 import com.weffle.table.person.Person;
 import com.weffle.table.point.Point;
-import com.weffle.table.work.Journal;
-import com.weffle.table.work.JournalData;
 import org.json.JSONObject;
 
 import java.sql.Timestamp;
-import java.util.Map;
 
 public class Employee extends BaseObject<EmployeeData> {
     public Employee() {
@@ -29,33 +28,32 @@ public class Employee extends BaseObject<EmployeeData> {
         putChild(EmployeeData.point, Point.class);
     }
 
-    public static void checkLocation(Employee employee, int pointId) {
+    public static void checkLocation(Employee employee, Point point) {
         employee.get();
-        Base employeePoint = (Base) employee.getData().get(EmployeeData.point);
+        Base employeePoint = (Base) employee.get(EmployeeData.point);
         if (employeePoint == null)
             throw new RuntimeException("Location is not set!");
-        if (!employeePoint.getKey().getValue().equals(pointId))
+        if (!employeePoint.equals(point))
             throw new RuntimeException("Location is not match!");
     }
 
-    public static void checkLocation(Admin admin, int pointId) {
-        if (!AdminRank.valueOf((String) admin.getData().get(AdminData.rank))
+    public static void checkLocation(Admin admin, Point point) {
+        if (!AdminRank.valueOf((String) admin.get(AdminData.rank))
                 .equals(AdminRank.Global))
-            checkLocation((Employee) admin.getData().get(AdminData.employee),
-                    pointId);
+            checkLocation((Employee) admin.get(AdminData.employee),
+                    point);
     }
 
     public JSONObject calculateSalary() {
-        Timestamp last = (Timestamp) getData().get(EmployeeData.lastDate);
+        Timestamp last = (Timestamp) get(EmployeeData.lastDate);
         Base[] allJournals = new Journal().getAll();
         long duration = 0;
-        for (Base work : allJournals) {
-            Map data = work.getData();
-            if (!((Employee) data.get(JournalData.employee)).getKey().getValue()
-                    .equals(getKey().getValue()))
+        for (Journal journal : (Journal[]) allJournals) {
+            if (!((Employee) journal.get(JournalData.employee))
+                    .getKey().equals(getKey()))
                 continue;
-            Timestamp came = (Timestamp) data.get(JournalData.came);
-            Timestamp went = (Timestamp) data.get(JournalData.went);
+            Timestamp came = (Timestamp) journal.get(JournalData.came);
+            Timestamp went = (Timestamp) journal.get(JournalData.went);
             if (last.before(came))
                 duration += (went == null ? System.currentTimeMillis() :
                         went.getTime()) - came.getTime();
@@ -63,9 +61,9 @@ public class Employee extends BaseObject<EmployeeData> {
                 duration += (went == null ? System.currentTimeMillis() :
                         went.getTime()) - last.getTime();
         }
-        double balance = (double) getData().get(EmployeeData.balance);
+        double balance = (double) get(EmployeeData.balance);
         balance += duration / (1000.0 * 3600.0)
-                * (double) getData().get(EmployeeData.rate);
+                * (double) get(EmployeeData.rate);
         JSONObject json = new JSONObject();
         json.put(EmployeeData.balance.name(), balance);
         json.put(EmployeeData.lastDate.name(),
@@ -73,23 +71,26 @@ public class Employee extends BaseObject<EmployeeData> {
         return put(json);
     }
 
+    public JSONObject offset(double amount) {
+        double balance = (double) get(EmployeeData.balance);
+        return put(new JSONObject().put(EmployeeData.balance.name(),
+                balance + amount));
+    }
+
     public JSONObject paySalary(double amount) {
-        double balance = (double) getData().get(EmployeeData.balance);
+        double balance = (double) get(EmployeeData.balance);
         if (amount > balance)
             throw new RuntimeException("The salary amount bigger than " +
                     "employee's balance!");
         if (amount < 0)
             throw new RuntimeException("The salary amount is negative!");
-        return put(new JSONObject().put(EmployeeData.balance.name(),
-                balance - amount));
+        return offset(-1.0 * amount);
     }
 
     public JSONObject fine(double amount) {
-        double balance = (double) getData().get(EmployeeData.balance);
         if (amount < 0)
             throw new RuntimeException("The fine amount is negative!");
-        return put(new JSONObject().put(EmployeeData.balance.name(),
-                balance - amount));
+        return  offset(-1.0 * amount);
     }
 
 }

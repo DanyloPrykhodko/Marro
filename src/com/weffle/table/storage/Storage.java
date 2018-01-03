@@ -6,8 +6,6 @@ import com.weffle.table.point.Point;
 import com.weffle.table.unit.Unit;
 import org.json.JSONObject;
 
-import java.util.Map;
-
 public class Storage extends BaseObject<StorageData> {
     public Storage() {
         super(StorageData.id);
@@ -27,20 +25,19 @@ public class Storage extends BaseObject<StorageData> {
         point.check();
         unit.check();
         Base[] allStorage = new Storage().getAll();
-        for (Base storage : allStorage) {
-            Map data = storage.getData();
-            if (!data.get(StorageData.point).equals(point.getKey().getValue()))
+        for (Storage storage : (Storage[]) allStorage) {
+            if (!storage.get(StorageData.point).equals(point))
                 continue;
-            if (!data.get(StorageData.unit).equals(unit.getKey().getValue()))
+            if (!storage.get(StorageData.unit).equals(unit))
                 continue;
-            storage.put(new JSONObject(
-                    ((int) data.get(StorageData.quantity)) + 1));
+            storage.put(new JSONObject().put(StorageData.quantity.name(),
+                    ((int) storage.get(StorageData.quantity)) + 1));
             return storage.getKey().getValue();
         }
         Storage storage = new Storage();
-        storage.putData(StorageData.point, point.getKey().getValue());
-        storage.putData(StorageData.unit, unit.getKey().getValue());
-        storage.putData(StorageData.quantity, 1);
+        storage.put(StorageData.point, point.getKey().getValue());
+        storage.put(StorageData.unit, unit.getKey().getValue());
+        storage.put(StorageData.quantity, 1);
         return storage.post();
     }
 
@@ -48,16 +45,16 @@ public class Storage extends BaseObject<StorageData> {
         point.check();
         unit.check();
         Base[] allStorage = new Storage().getAll();
-        for (Base storage : allStorage) {
-            Map data = storage.getData();
-            if (!data.get(StorageData.point).equals(point.getKey().getValue()))
+        for (Storage storage : (Storage[]) allStorage) {
+            if (!storage.get(StorageData.point).equals(point))
                 continue;
-            if (!data.get(StorageData.unit).equals(unit.getKey().getValue()))
+            if (!storage.get(StorageData.unit).equals(unit))
                 continue;
-            int quantity = (int) data.get(StorageData.quantity);
+            int quantity = (int) storage.get(StorageData.quantity);
             if (quantity <= 0)
                 throw new RuntimeException("The point do not contains unit!");
-            storage.put(new JSONObject(quantity - 1));
+            storage.put(new JSONObject().put(StorageData.quantity.name(),
+                    quantity - 1));
             return storage.getKey().getValue();
         }
         throw new RuntimeException("The point do not contains unit!");

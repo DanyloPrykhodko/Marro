@@ -4,14 +4,14 @@ import com.weffle.object.Base;
 import com.weffle.table.employee.Employee;
 import com.weffle.table.employee.EmployeeData;
 import com.weffle.table.employee.EmployeeStatus;
+import com.weffle.table.journal.Journal;
+import com.weffle.table.journal.JournalData;
 import com.weffle.table.point.Point;
 import com.weffle.table.storage.Storage;
 import com.weffle.table.transfer.Transfer;
 import com.weffle.table.transfer.TransferData;
 import com.weffle.table.transfer.TransferStatus;
 import com.weffle.table.unit.Unit;
-import com.weffle.table.work.Journal;
-import com.weffle.table.work.JournalData;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -20,7 +20,6 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.sql.Timestamp;
 import java.util.List;
-import java.util.Map;
 
 @Path("admin")
 public class AdminResource {
@@ -243,8 +242,8 @@ public class AdminResource {
         Admin.checkAccess(token, AdminRank.Local);
         new Employee(employeeId).check();
         Journal journal = new Journal();
-        journal.putData(JournalData.employee, employeeId);
-        journal.putData(JournalData.came,
+        journal.put(JournalData.employee, employeeId);
+        journal.put(JournalData.came,
                 new Timestamp(System.currentTimeMillis()));
         return Response.ok().entity(journal.post()).build();
     }
@@ -265,11 +264,10 @@ public class AdminResource {
         new Employee(employeeId).check();
         Base[] allJournals = new Journal().getAll();
         for (int i = allJournals.length - 1; i >= 0; i--) {
-            Base journal = allJournals[i];
-            Map data = journal.getData();
-            Base employee = (Base) data.get(JournalData.employee);
-            if (employee.getData().get(EmployeeData.id).equals(employeeId)) {
-                if (data.containsKey(JournalData.went))
+            Journal journal = (Journal) allJournals[i];
+            Base employee = (Base) journal.get(JournalData.employee);
+            if (employee.getKey().getValue().equals(employeeId)) {
+                if (journal.getData().containsKey(JournalData.went))
                     return Response.serverError().entity("Do not contains " +
                             "suitable journal event!").build();
                 JSONObject json = new JSONObject().put(JournalData.went.name(),
@@ -356,14 +354,14 @@ public class AdminResource {
         Admin.checkAccess(token, AdminRank.Local);
         new Point(Integer.valueOf(pointsId.get(0))).check();
         new Point(Integer.valueOf(pointsId.get(1))).check();
-        Employee.checkLocation(Admin.createFromToken(token),
-                Integer.valueOf(pointsId.get(1)));
+        Employee.checkLocation(Admin.createFromToken(token), 
+                new Point(Integer.parseInt(pointsId.get(1))));
         Transfer transfer = new Transfer();
-        transfer.putData(TransferData.departure,
+        transfer.put(TransferData.departure,
                 Integer.valueOf(pointsId.get(0)));
-        transfer.putData(TransferData.arrival,
+        transfer.put(TransferData.arrival,
                 Integer.valueOf(pointsId.get(1)));
-        transfer.putData(TransferData.status,
+        transfer.put(TransferData.status,
                 TransferStatus.Requested.name());
         return Response.ok().entity(transfer.post()).build();
     }
@@ -381,15 +379,17 @@ public class AdminResource {
     public Response storageSend(@PathParam("transfer") int transferId,
                                 @QueryParam("token") String token) {
         Admin.checkAccess(token, AdminRank.Local);
-        Base transfer = new Transfer(transferId).get();
-        Employee.checkLocation(Admin.createFromToken(token),
-                (int) ((Point) transfer.getData().get(TransferData.departure))
-                        .getKey().getValue());
+        Transfer transfer = (Transfer) new Transfer(transferId).get();
+        Employee.checkLocation(Admin.createFromToken(token), 
+                (Point) transfer.get(TransferData.departure));
         JSONObject json = new JSONObject();
         json.put(TransferData.sent.name(),
                 new Timestamp(System.currentTimeMillis()));
         json.put(TransferData.status.name(), TransferStatus.Sent.name());
-        return Response.ok().entity(transfer.put(json)).build();
+        Response response = Response.ok().entity(transfer.put(json)).build();
+        Storage.decrease(((Point) transfer.get(TransferData.departure)),
+                ((Unit) transfer.get(TransferData.unit)));
+        return response;
     }
 
     /**
@@ -405,15 +405,17 @@ public class AdminResource {
     public Response storageReceive(@PathParam("transfer") int transferId,
                                    @QueryParam("token") String token) {
         Admin.checkAccess(token, AdminRank.Local);
-        Base transfer = new Transfer(transferId).get();
+        Transfer transfer = (Transfer) new Transfer(transferId).get();
         Employee.checkLocation(Admin.createFromToken(token),
-                (int) ((Point) transfer.getData().get(TransferData.arrival))
-                        .getKey().getValue());
+                (Point) transfer.get(TransferData.arrival));
         JSONObject json = new JSONObject();
         json.put(TransferData.received.name(),
                 new Timestamp(System.currentTimeMillis()));
         json.put(TransferData.status.name(), TransferStatus.Received.name());
-        return Response.ok().entity(transfer.put(json)).build();
+        Response response = Response.ok().entity(transfer.put(json)).build();
+        Storage.increase((Point) transfer.get(TransferData.arrival),
+                (Unit) transfer.get(TransferData.unit));
+        return response;
     }
 
     /**
@@ -432,8 +434,8 @@ public class AdminResource {
                                    @QueryParam("point") int pointId,
                                    @QueryParam("token") String token) {
         Admin.checkAccess(token, AdminRank.Local);
-        Employee.checkLocation(Admin.createFromToken(token), pointId);
         Base point = new Point(pointId);
+        Employee.checkLocation(Admin.createFromToken(token), (Point) point);
         point.check();
         Base unit = new Unit(unitBarcode);
         unit.check();

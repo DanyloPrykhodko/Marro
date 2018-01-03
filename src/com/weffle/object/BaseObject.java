@@ -278,9 +278,26 @@ public abstract class BaseObject<E extends Enum<E>> implements Base<E> {
         return data;
     }
 
+    /**
+     * Put object's data.
+     *
+     * @param key Data key.
+     * @param value Data value.
+     */
     @Override
-    public void putData(E key, Object value) {
+    public void put(E key, Object value) {
         data.put(key, value);
+    }
+
+    /**
+     * Get object's data by key.
+     *
+     * @param key Data key.
+     * @return The object's data by key.
+     */
+    @Override
+    public Object get(E key) {
+        return data.get(key);
     }
 
     /**
@@ -329,13 +346,13 @@ public abstract class BaseObject<E extends Enum<E>> implements Base<E> {
                         base.getKey().setValue(value);
                         base.get();
                     }
-                    data.put(e, base);
+                    put(e, base);
                 } catch (InstantiationException |
                         IllegalAccessException e1) {
                     e1.printStackTrace();
                 }
             else
-                data.put(e, value);
+                put(e, value);
         }
         return this;
     }
@@ -360,13 +377,13 @@ public abstract class BaseObject<E extends Enum<E>> implements Base<E> {
                     try {
                         Base base = children.get(eConst).newInstance();
                         base.getKey().setValue(value);
-                        data.put(eConst, base.get());
+                        put(eConst, base.get());
                     } catch (InstantiationException |
                             IllegalAccessException e1) {
                         e1.printStackTrace();
                     }
                 } else
-                    data.put(eConst, value);
+                    put(eConst, value);
             } catch (SQLException e) {
                 e.printStackTrace();
             }
@@ -415,7 +432,7 @@ public abstract class BaseObject<E extends Enum<E>> implements Base<E> {
      *
      * @return Object's name.
      */
-    private String getName() {
+    public String getName() {
         String simpleName = getClass().getSimpleName();
         return String.valueOf(simpleName.charAt(0)).toLowerCase() +
                 simpleName.substring(1);
@@ -473,5 +490,14 @@ public abstract class BaseObject<E extends Enum<E>> implements Base<E> {
     @Override
     public String toString() {
         return getJSON().toString();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return this == o ||
+                o != null &&
+                o instanceof BaseObject<?> &&
+                o.getClass() == getClass() &&
+                getKey().equals(((BaseObject) o).getKey());
     }
 }

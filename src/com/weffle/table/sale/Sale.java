@@ -5,11 +5,13 @@ import com.weffle.table.customer.Customer;
 import com.weffle.table.payment.Payment;
 import com.weffle.table.point.Point;
 import com.weffle.table.seller.Seller;
+import com.weffle.table.unit.Unit;
 
 public class Sale extends BaseObject<SaleData> {
     public Sale() {
         super(SaleData.id);
         setAutoKey();
+        putChild(SaleData.unit, Unit.class);
         putChild(SaleData.payment, Payment.class);
         putChild(SaleData.customer, Customer.class);
         putChild(SaleData.seller, Seller.class);
@@ -19,6 +21,7 @@ public class Sale extends BaseObject<SaleData> {
     public Sale(int id) {
         super(SaleData.id, id);
         setAutoKey();
+        putChild(SaleData.unit, Unit.class);
         putChild(SaleData.payment, Payment.class);
         putChild(SaleData.customer, Customer.class);
         putChild(SaleData.seller, Seller.class);

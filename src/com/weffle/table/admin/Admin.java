@@ -36,15 +36,15 @@ public class Admin extends BaseObject<AdminData> {
 
                 if (hashedPassword.equals(hash.toLowerCase())) {
                     Admin admin = (Admin) new Admin(id).get();
-                    if (admin.getData().get(AdminData.token) == null)
+                    if (admin.get(AdminData.token) == null)
                         return admin.updateToken();
                     try {
                         admin.checkTokenDate();
                         JSONObject json = new JSONObject();
                         json.put(AdminData.token.name(),
-                                admin.getData().get(AdminData.token));
+                                admin.get(AdminData.token));
                         json.put(AdminData.tokenDate.name(),
-                                admin.getData().get(AdminData.tokenDate));
+                                admin.get(AdminData.tokenDate));
                         return json;
                     } catch (RuntimeException e) {
                         e.printStackTrace();
@@ -67,7 +67,7 @@ public class Admin extends BaseObject<AdminData> {
         return put(json);
     }
 
-    public static Admin createFromToken(String token)
+    static Admin createFromToken(String token)
             throws RuntimeException {
         try (Database database = WebApplication.getDatabase()) {
             database.connect();
@@ -93,7 +93,7 @@ public class Admin extends BaseObject<AdminData> {
         if (admin == null)
             return;
         AdminRank adminRank = AdminRank.valueOf(
-                (String) admin.getData().get(AdminData.rank));
+                (String) admin.get(AdminData.rank));
         if (!(adminRank.equals(AdminRank.Global) || adminRank.equals(rank)))
             throw new RuntimeException("You don't have permissions!");
     }
@@ -109,7 +109,7 @@ public class Admin extends BaseObject<AdminData> {
     }
     
     private void checkTokenDate() {
-        Timestamp timestamp = (Timestamp) getData().get(AdminData.tokenDate);
+        Timestamp timestamp = (Timestamp) get(AdminData.tokenDate);
         long current = System.currentTimeMillis();
         if (timestamp.before(new Date(current)))
                 throw new RuntimeException("The token is deprecated!");

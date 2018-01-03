@@ -81,7 +81,14 @@ public interface Base<E extends Enum> {
     /**
      * Put object's data.
      */
-    void putData(E key, Object value);
+    void put(E key, Object value);
+
+    /**
+     * Get object's data by key.
+     *
+     * @return The object's data by key.
+     */
+    Object get(E key);
 
     /**
      * Get object's data.

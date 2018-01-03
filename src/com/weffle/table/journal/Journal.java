@@ -1,4 +1,4 @@
-package com.weffle.table.work;
+package com.weffle.table.journal;
 
 import com.weffle.object.BaseObject;
 import com.weffle.table.employee.Employee;

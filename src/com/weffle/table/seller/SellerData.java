@@ -1,5 +1,5 @@
 package com.weffle.table.seller;
 
 public enum SellerData {
-    id, employee
+    id, employee, percent
 }
